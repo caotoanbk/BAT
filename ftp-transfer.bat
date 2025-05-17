@@ -10,7 +10,24 @@ if not exist "%WORK_DIR%" (
 cd /d "%WORK_DIR%"
 
 :: === Get user input ===
-set /p FTP_URL=Enter FTP URL (e.g., ftp://ftp.source.com/path/to/file.tar.gz): 
+::set /p FTP_URL=Enter FTP URL (e.g., ftp://ftp.source.com/path/to/file.tar.gz): 
+set /p RAW_URL=Enter FTP URL (e.g., ftp://ftp.source.com/path/to/file.tar.gz): 
+echo %RAW_URL%test
+:: Sanitize: remove username if embedded in the URL (e.g., ftp://user@host -> ftp://host)
+for /f "tokens=1,* delims=@" %%a in ("%RAW_URL%") do (
+    set "FTP_URL=%%a"
+    if not "%%b"=="" set "FTP_URL=ftp://%%b"
+)
+:: Trim leading/trailing spaces
+for /f "tokens=* delims=" %%A in ("%FTP_URL%") do set "FTP_URL=%%A"
+
+:: Trim trailing spaces by loop
+:trim_end
+if "!FTP_URL:~-1!"==" " (
+    set "FTP_URL=!FTP_URL:~0,-1!"
+    goto trim_end
+)
+
 set /p FTP_USER=Enter FTP Username: 
 :: set /p FTP_PASS=Enter FTP Password: 
 :: === Secure password input ===
@@ -48,7 +65,9 @@ if %ERRORLEVEL% NEQ 0 (
 
 :: === Show download command for reuse ===
 echo.
-echo Done!
+echo Done! 
+echo Download URL:
+echo curl -u "%FTP_USER%:%FTP_PASS%" -o "%FILE_NAME%" "%UPLOAD_URL%/%FILE_NAME%"
 echo curl -u "%FTP_USER%:%FTP_PASS%" -o "%FILE_NAME%" "%UPLOAD_URL%/%FILE_NAME%" | clip
 echo Download command copied to clipboard!
 
