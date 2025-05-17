@@ -1,0 +1,144 @@
+@echo off
+setlocal EnableDelayedExpansion
+
+:: Set FTP credentials
+set "FTP_USER=toan2.cao"
+set "FTP_PASS=lge;;321"
+
+:: Ask for FTP URL
+set /p FTP_URL=Enter FTP URL (e.g., ftp://ftp.example.com/folder/): 
+if not "%FTP_URL:~-1%"=="/" (
+    set "FTP_URL=%FTP_URL%/"
+)
+
+:RESTART
+cls
+echo.
+echo Listing content from: %FTP_URL%
+echo.
+
+:: Get directory listing
+curl --ftp-pasv -s -u "%FTP_USER%:%FTP_PASS%" "%FTP_URL%" > ftp_raw.tmp
+
+:: Separate into folders and files
+> folders.tmp (
+    for /f "tokens=1,*" %%A in (ftp_raw.tmp) do (
+        set "line=%%A %%B"
+        setlocal enabledelayedexpansion
+        set "firstChar=!line:~0,1!"
+        if "!firstChar!"=="d" echo !line!
+        endlocal
+    )
+)
+> files.tmp (
+    for /f "tokens=1,*" %%A in (ftp_raw.tmp) do (
+        set "line=%%A %%B"
+        setlocal enabledelayedexpansion
+        set "firstChar=!line:~0,1!"
+        if "!firstChar!"=="-" echo !line!
+        endlocal
+    )
+)
+
+:: Build full list with numbering
+set i=0
+> full_list.tmp (
+    echo 0. [UP] ..
+    if exist folders.tmp (
+        for /f "tokens=*" %%L in (folders.tmp) do (
+            set /a i+=1
+            call :GetName "%%L" name
+            echo !i!. [DIR] !name!
+        )
+    )
+    if exist files.tmp (
+        for /f "tokens=*" %%L in (files.tmp) do (
+            set /a i+=1
+            call :GetName "%%L" name
+            echo !i!. [FILE] !name!
+        )
+    )
+)
+
+:: Show list
+type full_list.tmp
+echo.
+set /p choice=Select number to open folder, go back, or download file (Q to quit): 
+if /i "%choice%"=="Q" goto :eof
+
+:: If 0, go up one level
+if "%choice%"=="0" (
+    :: Move up one folder
+    set "temp_url=%FTP_URL:~0,-1%"  :: remove trailing /
+    
+    :: Prevent cutting below the root (ftp://...)
+    for /f "delims=" %%U in ('powershell -NoProfile -Command "$u='%temp_url%';$idx=$u.LastIndexOf('/'); if ($idx -lt 6) { $u } else { $u.Substring(0, $idx) }"') do (
+        set "FTP_URL=%%U/"
+    )
+    goto :RESTART
+)
+
+:: Extract selected line
+:: Extract selected line
+set "LINE="
+for /f "tokens=1,* delims=." %%A in ('type full_list.tmp') do (
+    if "%%A"=="%choice%" (
+        set "LINE=%%B"
+    )
+)
+
+
+if not defined LINE (
+    echo Invalid choice.
+    pause
+    goto :RESTART
+)
+
+:: Parse TYPE and TARGET
+for /f "tokens=1,*" %%X in ("!LINE!") do (
+    set "TYPE=%%X"
+    set "TARGET=%%Y"
+)
+
+if "%TYPE%"=="[DIR]" (
+    set "FTP_URL=%FTP_URL%%TARGET%/"
+    goto :RESTART
+) else if "%TYPE%"=="[FILE]" (
+	setlocal EnableDelayedExpansion
+	set "FILE_URL=%FTP_URL%%TARGET%"
+	echo.
+	echo FTP file URL:
+	echo !FILE_URL!
+	echo.
+	echo URL copied to clipboard.
+	echo !FILE_URL! | clip
+	endlocal
+	goto :eof
+	::pause
+	::goto :RESTART
+
+) else (
+    echo Invalid selection.
+    pause
+    goto :RESTART
+)
+
+:: Function to go up to parent folder
+:GoUpFolder
+set "tmpURL=%FTP_URL:~0,-1%"
+for %%a in ("%tmpURL%") do set "tmpURL=%%~dpa"
+set "tmpURL=%tmpURL:\=/%"
+set "FTP_URL=%tmpURL%"
+goto :eof
+
+:: Function to extract name from raw listing
+:GetName
+setlocal EnableDelayedExpansion
+set "line=%~1"
+set "name="
+for /f "tokens=9,*" %%A in ("!line!") do (
+    set "name=%%A"
+    if "%%B" neq "" set "name=!name! %%B"
+)
+endlocal & set "%2=%name%"
+goto :eof
